@@ -1,139 +1,48 @@
-# VibeJoy Media Player
+# VibeJoy Music Player
 
-![VibeJoy Media Player](https://placehold.co/800x400/1e1e1e/4fc3f7?text=VibeJoy+Media+Player)
-
-A modern, feature-rich media player with a sleek dark theme GUI built using Python and Tkinter.
+VibeJoy is a simple, elegant music player built with Python, customtkinter, and Pygame. It allows you to manage and play your local music files with a clean and modern interface.
 
 ## Features
 
-- 🎵 **Modern Dark Theme Interface** - Sleek and visually appealing design
-- 🎨 **Album Art Display** - Automatically shows album artwork from your music files
-- 📝 **Track Information** - Displays title, artist, and other metadata
-- ⏱️ **Progress Tracking** - Visual progress bar with time display
-- 🔀 **Shuffle Mode** - Random playback of your music collection
-- 🔁 **Repeat Mode** - Loop single tracks or entire playlists
-- 📁 **Folder Import** - Easily add entire folders of music to your playlist
-- 🔊 **Volume Control** - Adjustable volume slider
-- 🎯 **Playlist Management** - Add or remove tracks from your playlist
+*   **Modern UI:** A beautiful and responsive user interface built with customtkinter.
+*   **Multiple File Formats:** Supports `.mp3`, `.wav`, and `.ogg` file formats.
+*   **Playlist Management:** Add songs from a folder, see them in a scrollable list, and save your playlist.
+*   **Playback Controls:** Play, pause, skip to the next or previous track.
+*   **Shuffle and Repeat:** Play your music in random order or loop a single song.
+*   **Volume Control:** Adjust the volume with a slider.
+*   **Seek Bar:** Jump to any part of the song using the progress slider.
+*   **Metadata Display:** Shows the title and artist of the currently playing song (for `.mp3` files).
+*   **Light/Dark Mode:** Switch between light and dark themes.
 
-## Screenshots
+## Technologies Used
 
-![Player Interface](https://placehold.co/600x400/2d2d2d/ffffff?text=Player+Interface)
-*Main player interface with album art display and playlist*
+*   **Python:** The core programming language.
+*   **customtkinter:** For creating the modern graphical user interface.
+*   **Pygame:** For music playback.
+*   **mutagen:** For reading metadata from music files.
 
-## Installation
+## How to Use
 
-### For Users
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/vibejoy.git
+    cd vibejoy
+    ```
+2.  **Install the dependencies:**
+    ```bash
+    pip install customtkinter pygame mutagen
+    ```
+3.  **Run the application:**
+    ```bash
+    python main.py
+    ```
+4.  **Add Music:**
+    *   Click the "Add Folder" button to select a folder containing your music files.
+    *   The supported formats are `.mp3`, `.wav`, and `.ogg`.
+5.  **Enjoy your music!**
+    *   Click on a song in the playlist to start playing.
+    *   Use the controls at the bottom to play, pause, skip, and adjust the volume.
 
-1. Download the latest release from the [Releases](#) page
-2. Run the `VibeJoy.exe` file in the main project directory
-3. Enjoy your music!
+## Screenshot
 
-### For Developers
-
-#### Prerequisites
-
-- Python 3.6 or higher
-- pip (Python package installer)
-
-#### Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/vibejoy-media-player.git
-   cd vibejoy-media-player
-   ```
-
-2. Install the required dependencies:
-   ```bash
-   pip install pygame Pillow mutagen
-   ```
-
-3. Run the application:
-   ```bash
-   python main.py
-   ```
-
-## Building from Source
-
-To build a standalone executable for Windows:
-
-1. Install PyInstaller:
-   ```bash
-   pip install pyinstaller
-   ```
-
-2. Build the executable:
-   ```bash
-   pyinstaller --noconfirm --onefile --windowed --name=VibeJoy --icon=NONE main.py
-   ```
-
-3. Find the executable in the project root folder
-
-Alternatively, you can run the provided build script:
-```bash
-build_installer.bat
-```
-
-## Usage
-
-1. Launch the application by double-clicking `VibeJoy.exe`
-2. Click "Add Folder" to import your music collection
-3. Select a track from the playlist to begin playback
-4. Use the playback controls to play, pause, stop, skip, etc.
-5. Adjust volume using the slider at the bottom
-6. Enable shuffle or repeat modes using the respective buttons
-
-### Controls
-
-- ▶️ **Play** - Start playback of selected track
-- ⏸️ **Pause** - Pause currently playing track
-- ⏹️ **Stop** - Stop playback and clear selection
-- ⏮️ **Previous** - Play previous track in playlist
-- ⏭️ **Next** - Play next track in playlist
-- 🔀 **Shuffle** - Toggle shuffle mode
-- 🔁 **Repeat** - Toggle repeat mode
-
-## Technical Details
-
-### Libraries Used
-
-- **Tkinter** - GUI framework
-- **Pygame** - Audio playback
-- **Pillow** - Image processing for album art
-- **Mutagen** - Audio metadata handling
-- **JSON** - Playlist persistence
-
-### Supported Formats
-
-- MP3
-- WAV
-- OGG
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Inspired by modern media player designs
-- Thanks to the Python community for the excellent libraries
-- Album art feature made possible by the Pillow and Mutagen libraries
-
-## Support
-
-If you encounter any issues or have feature requests, please [open an issue](#) on GitHub.
-
----
-
-**Enjoy your music with VibeJoy!** 🎶
+(You can add a screenshot of the application here)

@@ -1,422 +1,234 @@
+import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import filedialog
 import pygame
 import os
 import random
 import json
-from tkinter import font
-from PIL import Image, ImageTk
 import io
-import mutagen
-from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
+from mutagen.id3 import ID3
+from mutagen.wave import WAVE
+from mutagen.oggvorbis import OggVorbis
+import time
+import threading
+from PIL import Image, ImageTk
 
+ctk.set_appearance_mode("Dark")
 
-class VibeJoyApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("VibeJoy Media Player")
-        self.root.geometry("1000x700")
-        self.root.minsize(800, 600)
-        self.root.configure(bg="#0f0f0f")
+class VibeJoyApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-        pygame.init()
+        self.title("VibeJoy Media Player")
+        self.geometry("1000x700")
+        self.iconbitmap("icon.ico")
+
+        # Initialize Pygame Mixer only
         pygame.mixer.init()
 
+        # State Variables
         self.playlist = []
         self.current_track_index = -1
         self.paused = False
         self.shuffling = False
         self.repeating = False
-        self.current_position = 0
-        self.track_length = 0
+        self.song_length = 0
+        self.is_playing = False
+        self.playlist_buttons = []
+        
+        # Time tracking
+        self.start_time = 0
+        self.current_pos = 0
+        self.last_update_time = 0
 
-        # Create custom fonts
-        self.default_font = font.Font(family="Helvetica", size=10)
-        self.title_font = font.Font(family="Helvetica", size=16, weight="bold")
-        self.track_font = font.Font(family="Helvetica", size=11)
-        self.button_font = font.Font(family="Helvetica", size=9)
-
+        # Load Playlist
         self.load_playlist()
 
-        # Create the UI
-        self.create_widgets()
+        # Layout Configuration
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Create Widgets
+        self.create_sidebar()
+        self.create_main_area()
+        self.create_controls()
+
+        # Start Update Loop
+        self.update_loop()
+
+    def create_sidebar(self):
+        self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0, fg_color="#000000")
+        self.sidebar_frame.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        self.sidebar_frame.grid_rowconfigure(6, weight=1)
+
+        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="VibeJoy", font=("Helvetica", 28, "bold"), text_color="#FFFFFF")
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+
+        self.add_folder_btn = ctk.CTkButton(self.sidebar_frame, text="Add Folder", command=self.add_folder_to_playlist, fg_color="#1DB954", hover_color="#1ED760", text_color="#FFFFFF")
+        self.add_folder_btn.grid(row=1, column=0, padx=20, pady=10)
+
+        self.remove_btn = ctk.CTkButton(self.sidebar_frame, text="Remove Selected", command=self.remove_selected_track, fg_color="transparent", border_width=2, text_color="#B3B3B3", hover_color="#282828")
+        self.remove_btn.grid(row=2, column=0, padx=20, pady=10)
+
+        self.shuffle_btn = ctk.CTkButton(self.sidebar_frame, text="Shuffle: Off", command=self.toggle_shuffle, fg_color="transparent", border_width=2, text_color="#B3B3B3", hover_color="#282828")
+        self.shuffle_btn.grid(row=3, column=0, padx=20, pady=10)
         
-        # Load initial playlist
+        self.repeat_btn = ctk.CTkButton(self.sidebar_frame, text="Repeat: Off", command=self.toggle_repeat, fg_color="transparent", border_width=2, text_color="#B3B3B3", hover_color="#282828")
+        self.repeat_btn.grid(row=4, column=0, padx=20, pady=10)
+
+        self.clear_playlist_btn = ctk.CTkButton(self.sidebar_frame, text="Clear Playlist", command=self.clear_playlist, fg_color="transparent", border_width=2, text_color="#B3B3B3", hover_color="#282828")
+        self.clear_playlist_btn.grid(row=5, column=0, padx=20, pady=10)
+
+        self.theme_switch = ctk.CTkSwitch(self.sidebar_frame, text="Dark Mode", command=self.toggle_theme, onvalue="on", offvalue="off", progress_color="#1DB954")
+        self.theme_switch.select()
+        self.theme_switch.grid(row=7, column=0, padx=20, pady=20)
+
+    def create_main_area(self):
+        self.main_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="#121212")
+        self.main_frame.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        self.main_frame.grid_rowconfigure(1, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+
+        # Album Cover
+        self.album_cover_label = ctk.CTkLabel(self.main_frame, text="")
+        self.album_cover_label.grid(row=0, column=0, pady=(0, 20))
+
+        # Now Playing Info
+        self.song_info_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.song_info_frame.grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        
+        self.track_title_label = ctk.CTkLabel(self.song_info_frame, text="No Song Playing", font=("Helveticab", 32, "bold"), text_color="#FFFFFF")
+        self.track_title_label.pack(anchor="w")
+        
+        self.track_artist_label = ctk.CTkLabel(self.song_info_frame, text="Unknown Artist", font=("Helvetica", 18), text_color="#B3B3B3")
+        self.track_artist_label.pack(anchor="w")
+
+        # Playlist List
+        self.playlist_frame = ctk.CTkScrollableFrame(self.main_frame, label_text="Playlist", label_text_color="#FFFFFF", fg_color="#1E1E1E")
+        self.playlist_frame.grid(row=2, column=0, sticky="nsew")
+        
         self.update_playlist_display()
-        
-        # Start the update loops
-        self.check_music_end()
-        self.update_progress()
 
-    def create_widgets(self):
-        # Create a main frame
-        main_frame = tk.Frame(self.root, bg="#0f0f0f")
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+    def create_controls(self):
+        self.controls_frame = ctk.CTkFrame(self, corner_radius=10, height=120, fg_color="#181818")
+        self.controls_frame.grid(row=1, column=1, sticky="ew", padx=20, pady=20)
+        self.controls_frame.grid_columnconfigure(1, weight=1)
 
-        # Header with title
-        header_frame = tk.Frame(main_frame, bg="#0f0f0f")
-        header_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        title_label = tk.Label(header_frame, text="VIBEJOY MEDIA PLAYER", font=self.title_font, 
-                              bg="#0f0f0f", fg="#4fc3f7")
-        title_label.pack()
+        # Progress Bar
+        self.progress_slider = ctk.CTkSlider(self.controls_frame, from_=0, to=100, command=self.seek_music, button_color="#1DB954", progress_color="#FFFFFF", button_hover_color="#1ED760")
+        self.progress_slider.set(0)
+        self.progress_slider.grid(row=0, column=0, columnspan=4, sticky="ew", padx=20, pady=(20, 10))
 
-        # Content area with album art and playlist
-        content_frame = tk.Frame(main_frame, bg="#0f0f0f")
-        content_frame.pack(fill=tk.BOTH, expand=True)
+        self.time_label = ctk.CTkLabel(self.controls_frame, text="0:00 / 0:00", text_color="#B3B3B3")
+        self.time_label.grid(row=0, column=4, padx=20, pady=(20, 10))
 
-        # Left side - Album Art and Track Info
-        left_frame = tk.Frame(content_frame, bg="#1a1a1a", relief=tk.FLAT, bd=0)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=(0, 10), expand=True)
-        
-        # Album art display
-        self.album_art_frame = tk.Frame(left_frame, bg="#252525", width=300, height=300)
-        self.album_art_frame.pack(pady=10, padx=10, fill=tk.NONE, expand=False)
-        self.album_art_frame.pack_propagate(False)
-        
-        self.album_art_label = tk.Label(self.album_art_frame, bg="#252525", text="No Album Art", fg="#888888")
-        self.album_art_label.pack(expand=True)
-        
-        # Track info display
-        self.track_info_frame = tk.Frame(left_frame, bg="#1a1a1a")
-        self.track_info_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
-        
-        self.track_title_label = tk.Label(self.track_info_frame, text="No track selected", 
-                                         font=self.title_font, bg="#1a1a1a", fg="white", 
-                                         wraplength=280, justify=tk.CENTER)
-        self.track_title_label.pack(pady=(0, 5))
-        
-        self.track_artist_label = tk.Label(self.track_info_frame, text="", 
-                                          font=self.default_font, bg="#1a1a1a", fg="#bbbbbb")
-        self.track_artist_label.pack()
-        
-        # Progress bar
-        progress_frame = tk.Frame(left_frame, bg="#1a1a1a")
-        progress_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        self.progress_label_current = tk.Label(progress_frame, text="0:00", font=("Helvetica", 8), 
-                                              bg="#1a1a1a", fg="#bbbbbb")
-        self.progress_label_current.pack(side=tk.LEFT)
-        
-        self.progress_bar = ttk.Scale(progress_frame, from_=0, to=100, command=self.seek_music)
-        self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        self.progress_label_total = tk.Label(progress_frame, text="0:00", font=("Helvetica", 8), 
-                                            bg="#1a1a1a", fg="#bbbbbb")
-        self.progress_label_total.pack(side=tk.RIGHT)
-        
-        # Right side - Playlist
-        right_frame = tk.Frame(content_frame, bg="#1a1a1a", relief=tk.FLAT, bd=0)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        # Playlist header
-        playlist_header = tk.Frame(right_frame, bg="#2d2d2d")
-        playlist_header.pack(fill=tk.X, padx=1, pady=1)
-        
-        playlist_label = tk.Label(playlist_header, text="PLAYLIST", font=self.default_font,
-                                 bg="#2d2d2d", fg="#bbbbbb")
-        playlist_label.pack(side=tk.LEFT, padx=10, pady=5)
-        
-        # Playlist listbox with scrollbar
-        listbox_frame = tk.Frame(right_frame, bg="#252525")
-        listbox_frame.pack(pady=5, padx=5, fill=tk.BOTH, expand=True)
-        
-        self.playlist_listbox = tk.Listbox(
-            listbox_frame, 
-            bg="#252525", 
-            fg="#ffffff", 
-            selectbackground="#4fc3f7",
-            selectforeground="#000000",
-            highlightthickness=0,
-            relief=tk.FLAT,
-            font=self.track_font,
-            bd=0,
-            activestyle=tk.NONE
-        )
-        self.playlist_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.playlist_listbox.bind("<Double-Button-1>", self.play_selected_track)
-        
-        playlist_scrollbar = tk.Scrollbar(listbox_frame, bg="#2d2d2d", troughcolor="#3a3a3a", 
-                                         activebackground="#4fc3f7", relief=tk.FLAT, bd=0)
-        playlist_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.playlist_listbox.config(yscrollcommand=playlist_scrollbar.set)
-        playlist_scrollbar.config(command=self.playlist_listbox.yview)
-        
-        # Control buttons
-        control_frame = tk.Frame(main_frame, bg="#0f0f0f")
-        control_frame.pack(fill=tk.X, pady=(20, 0))
-        
-        # Top row - utility buttons
-        top_button_frame = tk.Frame(control_frame, bg="#0f0f0f")
-        top_button_frame.pack(pady=5)
-        
-        add_folder_button = tk.Button(top_button_frame, text="Add Folder", command=self.add_folder_to_playlist,
-                                     bg="#3a3a3a", fg="white", relief=tk.FLAT, font=self.button_font,
-                                     activebackground="#4fc3f7", activeforeground="black", 
-                                     padx=10)
-        add_folder_button.grid(row=0, column=0, padx=5)
-        
-        remove_button = tk.Button(top_button_frame, text="Remove Selected", command=self.remove_selected_tracks,
-                                 bg="#3a3a3a", fg="white", relief=tk.FLAT, font=self.button_font,
-                                 activebackground="#4fc3f7", activeforeground="black", 
-                                 padx=10)
-        remove_button.grid(row=0, column=1, padx=5)
-        
-        # Middle row - playback controls
-        mid_button_frame = tk.Frame(control_frame, bg="#0f0f0f")
-        mid_button_frame.pack(pady=10)
-        
-        prev_button = tk.Button(mid_button_frame, text="⏮", command=self.prev_track,
-                               bg="#3a3a3a", fg="white", relief=tk.FLAT, font=("Helvetica", 14),
-                               activebackground="#4fc3f7", activeforeground="black", width=3)
-        prev_button.grid(row=0, column=0, padx=5)
-        
-        self.play_button = tk.Button(mid_button_frame, text="▶", command=self.play_music,
-                                    bg="#4fc3f7", fg="black", relief=tk.FLAT, font=("Helvetica", 14),
-                                    activebackground="#6bd1ff", activeforeground="black", width=3)
-        self.play_button.grid(row=0, column=1, padx=5)
-        
-        self.pause_button = tk.Button(mid_button_frame, text="⏸", command=self.pause_music,
-                                     bg="#3a3a3a", fg="white", relief=tk.FLAT, font=("Helvetica", 14),
-                                     activebackground="#4fc3f7", activeforeground="black", width=3)
-        self.pause_button.grid(row=0, column=2, padx=5)
-        
-        stop_button = tk.Button(mid_button_frame, text="⏹", command=self.stop_music,
-                               bg="#3a3a3a", fg="white", relief=tk.FLAT, font=("Helvetica", 14),
-                               activebackground="#4fc3f7", activeforeground="black", width=3)
-        stop_button.grid(row=0, column=3, padx=5)
-        
-        next_button = tk.Button(mid_button_frame, text="⏭", command=self.next_track,
-                               bg="#3a3a3a", fg="white", relief=tk.FLAT, font=("Helvetica", 14),
-                               activebackground="#4fc3f7", activeforeground="black", width=3)
-        next_button.grid(row=0, column=4, padx=5)
-        
-        # Bottom row - shuffle and repeat
-        bottom_button_frame = tk.Frame(control_frame, bg="#0f0f0f")
-        bottom_button_frame.pack(pady=5)
-        
-        self.shuffle_button = tk.Button(bottom_button_frame, text="🔀 Shuffle", command=self.toggle_shuffle,
-                                       bg="#3a3a3a", fg="white", relief=tk.FLAT, font=self.button_font,
-                                       activebackground="#4fc3f7", activeforeground="black",
-                                       padx=10)
-        self.shuffle_button.grid(row=0, column=0, padx=5)
-        
-        self.repeat_button = tk.Button(bottom_button_frame, text="🔁 Repeat", command=self.toggle_repeat,
-                                      bg="#3a3a3a", fg="white", relief=tk.FLAT, font=self.button_font,
-                                      activebackground="#4fc3f7", activeforeground="black",
-                                      padx=10)
-        self.repeat_button.grid(row=0, column=1, padx=5)
-        
-        # Volume control
-        volume_frame = tk.Frame(control_frame, bg="#0f0f0f")
-        volume_frame.pack(pady=10, fill=tk.X)
-        
-        volume_label = tk.Label(volume_frame, text="Volume:", font=self.default_font,
-                               bg="#0f0f0f", fg="#bbbbbb")
-        volume_label.pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.volume_slider = tk.Scale(volume_frame, from_=0, to=100, orient=tk.HORIZONTAL,
-                                     command=self.set_volume, bg="#2d2d2d", fg="white",
-                                     highlightthickness=0, relief=tk.FLAT, font=("Helvetica", 8),
-                                     troughcolor="#3a3a3a", activebackground="#4fc3f7", 
-                                     length=150)
-        self.volume_slider.set(70)  # Default volume
-        self.volume_slider.pack(side=tk.LEFT)
-        
-        # Status bar
-        self.status_bar = tk.Label(self.root, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W,
-                                  bg="#2d2d2d", fg="#bbbbbb", font=("Helvetica", 8))
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        # Buttons
+        self.btn_frame = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
+        self.btn_frame.grid(row=1, column=0, columnspan=5, pady=10)
+
+        self.prev_btn = ctk.CTkButton(self.btn_frame, text="⏮", width=50, height=40, command=self.prev_track, font=("Helvetica", 20), fg_color="transparent", text_color="#FFFFFF", hover_color="#282828")
+        self.prev_btn.pack(side="left", padx=10)
+
+        self.play_pause_btn = ctk.CTkButton(self.btn_frame, text="▶", width=60, height=50, command=self.play_pause_music, font=("Helvetica", 24, "bold"), fg_color="#1DB954", text_color="#FFFFFF", hover_color="#1ED760")
+        self.play_pause_btn.pack(side="left", padx=10)
+
+        self.next_btn = ctk.CTkButton(self.btn_frame, text="⏭", width=50, height=40, command=self.next_track, font=("Helvetica", 20), fg_color="transparent", text_color="#FFFFFF", hover_color="#282828")
+        self.next_btn.pack(side="left", padx=10)
+
+        # Volume
+        self.volume_label = ctk.CTkLabel(self.btn_frame, text="🔊")
+        self.volume_label.pack(side="left", padx=(30, 5))
+        self.volume_slider = ctk.CTkSlider(self.btn_frame, from_=0, to=1, width=150, command=self.set_volume, button_color="#1DB954", progress_color="#FFFFFF", button_hover_color="#1ED760")
+        self.volume_slider.set(0.5)
+        self.volume_slider.pack(side="left", padx=5)
 
     def add_folder_to_playlist(self):
         folder_selected = filedialog.askdirectory()
         if folder_selected:
-            added_count = 0
             for root, _, files in os.walk(folder_selected):
                 for file in files:
                     if file.endswith((".mp3", ".wav", ".ogg")):
                         path = os.path.join(root, file)
                         if path not in self.playlist:
                             self.playlist.append(path)
-                            added_count += 1
             self.update_playlist_display()
             self.save_playlist()
-            self.status_bar.config(text=f"Added {added_count} tracks from folder")
 
     def update_playlist_display(self):
-        self.playlist_listbox.delete(0, tk.END)
+        # Clear existing buttons
+        for btn in self.playlist_buttons:
+            btn.destroy()
+        self.playlist_buttons = []
+
         for i, track in enumerate(self.playlist):
-            display_name = os.path.basename(track)
-            # Truncate long names
-            if len(display_name) > 50:
-                display_name = display_name[:47] + "..."
-            self.playlist_listbox.insert(tk.END, display_name)
+            name = os.path.basename(track)
+            btn = ctk.CTkButton(self.playlist_frame, text=f"{i+1}. {name}", anchor="w", 
+                                command=lambda index=i: self.play_track_by_index(index),
+                                fg_color="transparent", text_color="#FFFFFF", hover_color="#282828")
+            btn.pack(fill="x", padx=5, pady=2)
+            self.playlist_buttons.append(btn)
         
-        # Highlight currently playing track
-        if 0 <= self.current_track_index < len(self.playlist):
-            self.playlist_listbox.selection_clear(0, tk.END)
-            self.playlist_listbox.selection_set(self.current_track_index)
-            self.playlist_listbox.see(self.current_track_index)
-            self.playlist_listbox.activate(self.current_track_index)
+        self.highlight_current_track()
+
+    def highlight_current_track(self):
+        for i, btn in enumerate(self.playlist_buttons):
+            if i == self.current_track_index:
+                btn.configure(fg_color="#1DB954")
+            else:
+                btn.configure(fg_color="transparent")
+
+    def play_track_by_index(self, index):
+        self.current_track_index = index
+        self.play_music()
 
     def play_music(self):
+        if not self.playlist or self.current_track_index == -1:
+            return
+
+        track_path = self.playlist[self.current_track_index]
+        
+        if not os.path.exists(track_path):
+            print(f"File not found: {track_path}")
+            self.next_track()
+            return
+        
+        try:
+            pygame.mixer.music.load(track_path)
+            pygame.mixer.music.play()
+            self.is_playing = True
+            self.paused = False
+            self.current_pos = 0
+            self.start_time = time.time()
+            self.play_pause_btn.configure(text="⏸")
+            self.highlight_current_track()
+            self.update_metadata(track_path)
+        except Exception as e:
+            print(f"Error playing {track_path}: {e}")
+
+    def play_pause_music(self):
         if not self.playlist:
-            self.status_bar.config(text="Playlist is empty")
+            return
+            
+        if self.current_track_index == -1:
+            self.current_track_index = 0
+            self.play_music()
             return
 
         if self.paused:
             pygame.mixer.music.unpause()
             self.paused = False
-            self.play_button.config(text="⏸")
-            self.status_bar.config(text=f"Playing: {os.path.basename(self.playlist[self.current_track_index])}")
-        else:
-            if self.current_track_index == -1:
-                self.current_track_index = 0
-            
-            track_path = self.playlist[self.current_track_index]
-            try:
-                pygame.mixer.music.load(track_path)
-                pygame.mixer.music.play()
-                self.update_playlist_display()
-                pygame.mixer.music.set_endevent(pygame.USEREVENT)
-                self.play_button.config(text="⏸")
-                self.status_bar.config(text=f"Playing: {os.path.basename(track_path)}")
-                self.update_track_info(track_path)
-            except pygame.error as e:
-                self.status_bar.config(text=f"Error playing file: {str(e)}")
-
-    def update_track_info(self, track_path):
-        # Update track info display
-        try:
-            audio_file = MP3(track_path, ID3=ID3)
-            title = os.path.basename(track_path)
-            artist = ""
-            
-            # Try to get title and artist from ID3 tags
-            if "TIT2" in audio_file.tags:
-                title = str(audio_file.tags["TIT2"])
-            
-            if "TPE1" in audio_file.tags:
-                artist = str(audio_file.tags["TPE1"])
-                
-            self.track_title_label.config(text=title)
-            self.track_artist_label.config(text=artist)
-            
-            # Update track length
-            self.track_length = audio_file.info.length
-            minutes = int(self.track_length // 60)
-            seconds = int(self.track_length % 60)
-            self.progress_label_total.config(text=f"{minutes}:{seconds:02d}")
-            
-            # Try to get album art
-            self.load_album_art(audio_file)
-            
-        except Exception as e:
-            # Fallback to filename if we can't read tags
-            self.track_title_label.config(text=os.path.basename(track_path))
-            self.track_artist_label.config(text="")
-            self.progress_label_total.config(text="0:00")
-            self.album_art_label.config(image="", text="No Album Art")
-
-    def load_album_art(self, audio_file):
-        try:
-            # Clear previous album art
-            self.album_art_label.config(image="", text="")
-            
-            # Try to extract album art from ID3 tags
-            for tag in audio_file.tags.values():
-                if isinstance(tag, mutagen.id3.APIC):
-                    # Load the image data
-                    image_data = tag.data
-                    image = Image.open(io.BytesIO(image_data))
-                    
-                    # Resize image to fit the display area
-                    image = image.resize((280, 280), Image.LANCZOS)
-                    photo = ImageTk.PhotoImage(image)
-                    
-                    # Update the label with the new image
-                    self.album_art_label.config(image=photo)
-                    self.album_art_label.image = photo  # Keep a reference
-                    return
-            
-            # If no album art found, display placeholder text
-            self.album_art_label.config(text="No Album Art")
-            
-        except Exception as e:
-            self.album_art_label.config(text="No Album Art")
-
-    def update_progress(self):
-        if pygame.mixer.music.get_busy() or self.paused:
-            if not self.paused:
-                # Update the progress bar position
-                self.current_position = pygame.mixer.music.get_pos() / 1000
-                
-                if self.track_length > 0:
-                    progress_percent = (self.current_position / self.track_length) * 100
-                    self.progress_bar.set(progress_percent)
-                    
-                    # Update current time label
-                    minutes = int(self.current_position // 60)
-                    seconds = int(self.current_position % 60)
-                    self.progress_label_current.config(text=f"{minutes}:{seconds:02d}")
-        
-        # Schedule the next update
-        self.root.after(1000, self.update_progress)
-
-    def seek_music(self, value):
-        if self.current_track_index >= 0 and self.track_length > 0:
-            # Calculate the position in seconds
-            seek_position = (float(value) / 100) * self.track_length
-            
-            # Update the current position display
-            self.current_position = seek_position
-            
-            # Update the time label
-            minutes = int(seek_position // 60)
-            seconds = int(seek_position % 60)
-            self.progress_label_current.config(text=f"{minutes}:{seconds:02d}")
-            
-            # Note: Direct seeking is not supported by pygame.mixer.music,
-            # so we'll just update the display but not actually seek
-
-    def check_music_end(self):
-        for event in pygame.event.get():
-            if event.type == pygame.USEREVENT:
-                self.handle_end_event()
-        self.root.after(100, self.check_music_end)
-
-    def play_selected_track(self, event):
-        selected_index = self.playlist_listbox.curselection()
-        if selected_index:
-            self.current_track_index = selected_index[0]
-            self.play_music()
-
-    def pause_music(self):
-        if pygame.mixer.music.get_busy() and not self.paused:
+            self.is_playing = True
+            self.start_time = time.time() - self.current_pos
+            self.play_pause_btn.configure(text="⏸")
+        elif self.is_playing:
             pygame.mixer.music.pause()
             self.paused = True
-            self.play_button.config(text="▶")
-            self.status_bar.config(text=f"Paused: {os.path.basename(self.playlist[self.current_track_index])}")
-        elif self.paused:
-            pygame.mixer.music.unpause()
-            self.paused = False
-            self.play_button.config(text="⏸")
-            self.status_bar.config(text=f"Playing: {os.path.basename(self.playlist[self.current_track_index])}")
-
-    def stop_music(self):
-        pygame.mixer.music.stop()
-        self.paused = False
-        self.current_track_index = -1
-        self.play_button.config(text="▶")
-        self.update_playlist_display()
-        self.status_bar.config(text="Playback stopped")
-        self.progress_bar.set(0)
-        self.progress_label_current.config(text="0:00")
-        self.track_title_label.config(text="No track selected")
-        self.track_artist_label.config(text="")
-        self.album_art_label.config(image="", text="No Album Art")
+            self.is_playing = False
+            self.current_pos = time.time() - self.start_time
+            self.play_pause_btn.configure(text="▶")
+        else:
+            self.play_music()
 
     def next_track(self):
         if not self.playlist:
@@ -431,85 +243,214 @@ class VibeJoyApp:
     def prev_track(self):
         if not self.playlist:
             return
-        
-        if self.shuffling:
+
+        if pygame.mixer.music.get_pos() > 3000:
+            self.play_music()
+        elif self.shuffling:
             self.current_track_index = random.randint(0, len(self.playlist) - 1)
+            self.play_music()
         else:
             self.current_track_index = (self.current_track_index - 1 + len(self.playlist)) % len(self.playlist)
-        self.play_music()
+            self.play_music()
 
     def toggle_shuffle(self):
         self.shuffling = not self.shuffling
-        if self.shuffling:
-            self.shuffle_button.config(bg="#4fc3f7", fg="black")  # Active color
-            self.status_bar.config(text="Shuffle mode enabled")
-        else:
-            self.shuffle_button.config(bg="#3a3a3a", fg="white")  # Default color
-            self.status_bar.config(text="Shuffle mode disabled")
+        text = "Shuffle: On" if self.shuffling else "Shuffle: Off"
+        self.shuffle_btn.configure(text=text, fg_color="#1f538d" if self.shuffling else "transparent")
 
     def toggle_repeat(self):
         self.repeating = not self.repeating
-        if self.repeating:
-            self.repeat_button.config(bg="#4fc3f7", fg="black")  # Active color
-            self.status_bar.config(text="Repeat mode enabled")
-        else:
-            self.repeat_button.config(bg="#3a3a3a", fg="white")  # Default color
-            self.status_bar.config(text="Repeat mode disabled")
+        text = "Repeat: On" if self.repeating else "Repeat: Off"
+        self.repeat_btn.configure(text=text, fg_color="#1f538d" if self.repeating else "transparent")
 
-    def set_volume(self, volume):
-        pygame.mixer.music.set_volume(float(volume) / 100)
+    def toggle_theme(self):
+        if self.theme_switch.get() == "on":
+            ctk.set_appearance_mode("Dark")
+            self.sidebar_frame.configure(fg_color="#000000")
+            self.main_frame.configure(fg_color="#121212")
+            self.controls_frame.configure(fg_color="#181818")
+            self.track_title_label.configure(text_color="#FFFFFF")
+            self.track_artist_label.configure(text_color="#B3B3B3")
+            self.playlist_frame.configure(label_text_color="#FFFFFF", fg_color="#1E1E1E")
+            self.time_label.configure(text_color="#B3B3B3")
+            self.logo_label.configure(text_color="#FFFFFF")
+            self.add_folder_btn.configure(text_color="#FFFFFF")
+            self.remove_btn.configure(text_color="#B3B3B3")
+            self.shuffle_btn.configure(text_color="#B3B3B3")
+            self.repeat_btn.configure(text_color="#B3B3B3")
+            self.clear_playlist_btn.configure(text_color="#B3B3B3")
+            self.prev_btn.configure(text_color="#FFFFFF")
+            self.play_pause_btn.configure(text_color="#FFFFFF")
+            self.next_btn.configure(text_color="#FFFFFF")
+            for btn in self.playlist_buttons:
+                btn.configure(text_color="#FFFFFF")
 
-    def handle_end_event(self):
-        if self.repeating:
-            self.play_music()  # Replay current track
         else:
-            if self.current_track_index < len(self.playlist) - 1:
-                self.next_track()
+            ctk.set_appearance_mode("Light")
+            self.sidebar_frame.configure(fg_color="#F0F0F0")
+            self.main_frame.configure(fg_color="#FFFFFF")
+            self.controls_frame.configure(fg_color="#E0E0E0")
+            self.track_title_label.configure(text_color="#000000")
+            self.track_artist_label.configure(text_color="#333333")
+            self.playlist_frame.configure(label_text_color="#000000", fg_color="#F5F5F5")
+            self.time_label.configure(text_color="#333333")
+            self.logo_label.configure(text_color="#000000")
+            self.add_folder_btn.configure(text_color="#000000")
+            self.remove_btn.configure(text_color="#333333")
+            self.shuffle_btn.configure(text_color="#333333")
+            self.repeat_btn.configure(text_color="#333333")
+            self.clear_playlist_btn.configure(text_color="#333333")
+            self.prev_btn.configure(text_color="#000000")
+            self.play_pause_btn.configure(text_color="#000000")
+            self.next_btn.configure(text_color="#000000")
+            for btn in self.playlist_buttons:
+                btn.configure(text_color="#000000")
+
+    def set_volume(self, value):
+        pygame.mixer.music.set_volume(float(value))
+
+    def seek_music(self, value):
+        if self.is_playing or self.paused:
+            new_pos = float(value)
+            try:
+                pygame.mixer.music.play(start=new_pos)
+                self.current_pos = new_pos
+                self.start_time = time.time() - new_pos
+                if self.paused:
+                    pygame.mixer.music.pause()
+            except Exception as e:
+                print(f"Seek error: {e}")
+
+    def update_metadata(self, path):
+        try:
+            audio = None
+            image = None
+            if path.endswith(".mp3"):
+                audio = MP3(path, ID3=ID3)
+                if 'APIC:' in audio.tags:
+                    artwork = audio.tags['APIC:'].data
+                    image = Image.open(io.BytesIO(artwork))
+                
+            elif path.endswith(".ogg"):
+                audio = OggVorbis(path)
+            elif path.endswith(".wav"):
+                audio = WAVE(path)
+            
+            if image is None:
+                image = Image.open("icon.png")
+
+            image = image.resize((200, 200), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+            self.album_cover_label.configure(image=photo)
+            self.album_cover_label.image = photo
+
+            if audio:
+                self.song_length = audio.info.length
+                self.progress_slider.configure(to=self.song_length)
+                
+                # Extract tags
+                title = os.path.basename(path)
+                artist = "Unknown Artist"
+                
+                if path.endswith(".mp3") and audio.tags:
+                    title = audio.tags.get('TIT2', [title])[0]
+                    artist = audio.tags.get('TPE1', [artist])[0]
+                
+                self.track_title_label.configure(text=str(title))
+                self.track_artist_label.configure(text=str(artist))
             else:
-                self.stop_music()  # Stop if it's the last track and not repeating
+                self.song_length = 0
+                self.track_title_label.configure(text=os.path.basename(path))
+                self.track_artist_label.configure(text="Unknown Format")
 
-    def remove_selected_tracks(self):
-        selected_indices = self.playlist_listbox.curselection()
-        if not selected_indices:
-            self.status_bar.config(text="No tracks selected for removal")
-            return
+        except Exception as e:
+            print(f"Error reading metadata: {e}")
+            self.song_length = 0
+            self.track_title_label.configure(text=os.path.basename(path))
 
-        # Convert to a list and sort in descending order to avoid index issues
-        sorted_indices = sorted(list(selected_indices), reverse=True)
-        removed_count = 0
+    def format_time(self, seconds):
+        minutes = int(seconds // 60)
+        seconds = int(seconds % 60)
+        return f"{minutes}:{seconds:02d}"
 
-        for index in sorted_indices:
-            if 0 <= index < len(self.playlist):
-                del self.playlist[index]
-                removed_count += 1
+    def update_loop(self):
+        # Check for music end
+        if self.is_playing and not pygame.mixer.music.get_busy():
+            # Music stopped naturally (or error)
+            # Check if we reached the end of the song approximately
+            # Or just assume it ended if we didn't pause it.
+            if not self.paused:
+                 if self.repeating:
+                     self.play_music()
+                 else:
+                     if self.current_track_index < len(self.playlist) - 1:
+                         self.next_track()
+                     else:
+                         self.is_playing = False
+                         self.play_pause_btn.configure(text="▶")
+                         self.current_pos = 0
+                         self.progress_slider.set(0)
+                         self.time_label.configure(text=f"0:00 / {self.format_time(self.song_length)}")
 
+        # Update Progress
+        if self.is_playing and not self.paused:
+            self.current_pos = time.time() - self.start_time
+            if self.current_pos > self.song_length:
+                self.current_pos = self.song_length
+            
+            self.progress_slider.set(self.current_pos)
+            self.time_label.configure(text=f"{self.format_time(self.current_pos)} / {self.format_time(self.song_length)}")
+
+        self.after(500, self.update_loop)
+
+    def clear_playlist(self):
+        self.playlist = []
+        self.current_track_index = -1
+        pygame.mixer.music.stop()
+        self.is_playing = False
+        self.paused = False
+        self.track_title_label.configure(text="No Song Playing")
+        self.track_artist_label.configure(text="Unknown Artist")
+        self.time_label.configure(text="0:00 / 0:00")
+        self.progress_slider.set(0)
+        self.play_pause_btn.configure(text="▶")
         self.update_playlist_display()
         self.save_playlist()
-        self.status_bar.config(text=f"Removed {removed_count} track(s)")
 
-        # Reset current_track_index if the currently playing song was removed
-        if self.current_track_index not in range(len(self.playlist)):
-            self.current_track_index = -1
-            pygame.mixer.music.stop()
-            self.play_button.config(text="▶")
-            self.stop_music()
+    def remove_selected_track(self):
+        if self.current_track_index != -1:
+            del self.playlist[self.current_track_index]
+            
+            if not self.playlist:
+                self.current_track_index = -1
+                pygame.mixer.music.stop()
+                self.is_playing = False
+                self.paused = False
+                self.track_title_label.configure(text="No Song Playing")
+                self.track_artist_label.configure(text="Unknown Artist")
+                self.time_label.configure(text="0:00 / 0:00")
+                self.progress_slider.set(0)
+                self.play_pause_btn.configure(text="▶")
+            elif self.current_track_index >= len(self.playlist):
+                self.current_track_index = 0
+            
+            self.update_playlist_display()
+            self.save_playlist()
+            
+            if self.playlist:
+                self.play_track_by_index(self.current_track_index)
+            else:
+                self.highlight_current_track()
 
     def save_playlist(self):
-        try:
-            with open("playlist.json", "w") as f:
-                json.dump(self.playlist, f)
-        except Exception as e:
-            self.status_bar.config(text=f"Error saving playlist: {str(e)}")
+        with open("playlist.json", "w") as f:
+            json.dump(self.playlist, f)
 
     def load_playlist(self):
         if os.path.exists("playlist.json"):
-            try:
-                with open("playlist.json", "r") as f:
-                    self.playlist = json.load(f)
-            except Exception as e:
-                self.status_bar.config(text=f"Error loading playlist: {str(e)}")
+            with open("playlist.json", "r") as f:
+                self.playlist = json.load(f)
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = VibeJoyApp(root)
-    root.mainloop()
+    app = VibeJoyApp()
+    app.mainloop()
